@@ -1,0 +1,159 @@
+/*
+ ****************************************************************************
+ *
+ * Copyright (c)2009 The Vanguard Group of Investment Companies (VGI)
+ * All rights reserved.
+ *
+ * This source code is CONFIDENTIAL and PROPRIETARY to VGI. Unauthorized
+ * distribution, adaptation, or use may be subject to civil and criminal
+ * penalties.
+ *
+ ****************************************************************************
+ Module Description:
+
+ $HeadURL: http://prdsvnrepo:8080/svn/retail/midtier/projects/entity/account-entsvc/branches/2018.0900.0/src/main/java/com/vanguard/service/domain/account/brokerage/impl/HoldingInvestmentMapper.java $
+ $LastChangedRevision: 1240516 $
+ $Author: ubn0 $
+ $LastChangedDate: 2015-11-17 16:33:38 -0500 (Tue, 17 Nov 2015) $
+ */
+package com.vanguard.service.domain.account.brokerage.impl;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.commons.lang.StringUtils;
+import org.springframework.stereotype.Service;
+
+import com.vanguard.process.investment.Investment;
+import com.vanguard.process.investment.InvestmentException;
+import com.vanguard.service.domain.account.Account;
+import com.vanguard.service.domain.account.brokerage.BrokerageHolding;
+import com.vanguard.service.domain.account.impl.BrokerageAccount;
+import com.vanguard.service.domain.ordermanager.investment.InvestmentWrapper;
+import com.vanguard.service.technical.common.Tools;
+import com.vanguard.service.technical.logging.LogFactory;
+import com.vanguard.service.technical.logging.LoggingService;
+import com.vanguard.spring.servicelocator.SpringBeanServiceLocator;
+
+/**
+ * The purpose of this class is to batch calls to retrieve Investments
+ * by instrument ID.
+ */
+@Service
+public class HoldingInvestmentMapper { // parasoft-suppress CODSTA.ORG.AMOC "2012.5.30 Violation during Retail Midtier Standard Rule switch"
+
+	private static final LoggingService LOG = LogFactory.getLog();
+
+	public void mapInvestmentsToDelayedHoldings(List<BrokerageAccount> accounts) {
+		mapInvestmentsToHoldings(accounts, new HoldingFetcher() {
+			public List<? extends BrokerageHolding> getHolding(BrokerageAccount account) {
+				return account.getDelayedHoldings();
+			}
+		});
+	}
+
+	public void mapInvestmentsToRealtimeHoldings(List<? extends Account> accounts) {
+		List<BrokerageAccount> brokerageAccounts = new ArrayList<BrokerageAccount>();
+		if (accounts != null) {
+			for (Account account : accounts) {
+				if (account instanceof BrokerageAccount) {
+					brokerageAccounts.add((BrokerageAccount) account);
+				}
+			}
+		}
+		mapInvestmentsToHoldings(brokerageAccounts, new HoldingFetcher() {
+			public List<? extends BrokerageHolding> getHolding(BrokerageAccount account) {
+				return account.getRealtimeHoldingsNoRefresh();
+			}
+		});
+	}
+
+	protected void mapInvestmentsToHoldings(List<BrokerageAccount> accounts, HoldingFetcher fetcher) {
+		try { 
+			InvestmentWrapper wrapper = (InvestmentWrapper) SpringBeanServiceLocator.getSpringManagedBean("investmentWrapper");
+			Map<String, Investment> vgFundMap = wrapper.getVGFundMap();
+			
+			Map<InvestmentType, Set<InvestmentKey>> investmentTypeMap = retrieveInvestmentTypeMap(accounts, fetcher);
+			Map<InvestmentKey, Investment> investmentKeyMap = retrieveInvestmentKeyMap(investmentTypeMap);
+			mapInvestmentsToHoldings(accounts, investmentKeyMap, vgFundMap, fetcher);
+		} catch (Exception e) {
+			LOG.logError(getClass().getName(), "Exception caught attempting to load investment objects for brokerage holdings: " + Tools.stackTraceToString(e), 882011);
+		}
+	}
+
+	protected Map<InvestmentType, Set<InvestmentKey>> retrieveInvestmentTypeMap(List<BrokerageAccount> accounts, HoldingFetcher fetcher) {
+		final Map<InvestmentType, Set<InvestmentKey>> investmentTypeMap = new HashMap<InvestmentType, Set<InvestmentKey>>();
+		investmentTypeMap.put(InvestmentType.INSTRUMENT, new HashSet<InvestmentKey>());
+		investmentTypeMap.put(InvestmentType.CUSIP, new HashSet<InvestmentKey>());
+		investmentTypeMap.put(InvestmentType.TICKER, new HashSet<InvestmentKey>());
+		
+		for (BrokerageAccount account : accounts) {
+			for (BrokerageHolding holding : fetcher.getHolding(account)) {
+			    if(null == holding.getInvestment() && false == holding.isInvestmentRetrievalAttempted()) {
+			    	
+					//SP: Code fix to set Instrument_Id by retrieving 'Option' data(ECIO202A) on the date of purchase 
+			    	if (holding instanceof BrokerageHoldingRealtimeImpl) {
+			    		if (((BrokerageHoldingRealtimeImpl) holding).getInvestmentType().equals(com.vanguard.service.domain.id.ordermanager.InvestmentType.OPTION)) {
+			    			holding.getOption();
+			    		}
+			    	}
+			    	
+			    	if (holding.getInsId() != 0) {
+			    		investmentTypeMap.get(InvestmentType.INSTRUMENT).add(new InvestmentKey(String.valueOf(holding.getInsId()), InvestmentType.INSTRUMENT));
+			    	} else if (StringUtils.isNotBlank(holding.getCusip())) {
+		    			 investmentTypeMap.get(InvestmentType.CUSIP).add(new InvestmentKey(holding.getCusip(), InvestmentType.CUSIP));
+			    	} else if (StringUtils.isNotBlank(holding.getTickerSymbol())) {
+			    		investmentTypeMap.get(InvestmentType.TICKER).add(new InvestmentKey(holding.getTickerSymbol(), InvestmentType.TICKER));
+			    	}
+			    	
+			        holding.setInvestmentRetrievalAttempted(true);
+			    }
+			}
+		}
+		
+		return investmentTypeMap; 
+	}
+
+	protected Map<InvestmentKey, Investment> retrieveInvestmentKeyMap(Map<InvestmentType, Set<InvestmentKey>> investmentTypeMap) throws InvestmentException {
+		Map<InvestmentKey, Investment> investmentKeyMap = new HashMap<InvestmentKey, Investment>();
+		if (investmentTypeMap.size() > 0) {
+			for (Map.Entry<InvestmentType, Set<InvestmentKey>> curEntry : investmentTypeMap.entrySet()) {
+				final InvestmentStrategy strategy = InvestmentStrategyFactory.getInvestmentStrategy(curEntry.getKey());
+				investmentKeyMap.putAll(strategy.execute(curEntry.getValue()));
+			}
+		}
+		return investmentKeyMap;
+	}
+
+	protected void mapInvestmentsToHoldings(List<BrokerageAccount> accounts, Map<InvestmentKey, Investment> investmentKeyMap, Map<String, Investment> vgFundMap, HoldingFetcher fetcher) {
+		for (BrokerageAccount account : accounts) {
+			for (BrokerageHolding holding : fetcher.getHolding(account)) {
+				Investment investment = investmentKeyMap.get(new InvestmentKey(String.valueOf(holding.getInsId()), InvestmentType.INSTRUMENT));
+				
+				if (investment == null) {
+					investment = investmentKeyMap.get(new InvestmentKey(holding.getCusip(), InvestmentType.CUSIP));
+				}
+				
+				if (investment == null) {
+					investment = investmentKeyMap.get(new InvestmentKey(holding.getTickerSymbol(), InvestmentType.TICKER));
+				}
+				
+				if (investment != null) {
+					holding.setInvestment(investment);
+				}
+				
+				holding.setVanguardFund(vgFundMap.get(holding.getCusip()) != null);
+				holding.setFundAccessFund(vgFundMap.get(holding.getCusip()) == null);
+			}
+		}
+	}
+	
+}
+
+interface HoldingFetcher { // parasoft-suppress CODSTA.ORG.AMOC "2012.5.30 Violation during Retail Midtier Standard Rule switch"
+	List<? extends BrokerageHolding> getHolding(BrokerageAccount account);
+}
