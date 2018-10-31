@@ -1,0 +1,109 @@
+/*
+ ****************************************************************************
+ * 
+ * Copyright (c)2012 The Vanguard Group of Investment Companies (VGI)
+ * All rights reserved.
+ * 
+ * This source code is CONFIDENTIAL and PROPRIETARY to VGI. Unauthorized
+ * distribution, adaptation, or use may be subject to civil and criminal
+ * penalties.
+ *
+ ****************************************************************************
+ Module Description:
+ 
+ $HeadURL: http://prdsvnrepo:8080/svn/retail/midtier/projects/entity/account-entsvc/branches/2018.0900.0/src/test/java/com/vanguard/service/domain/account/brokerage/impl/HoldingInvestmentMapperTest.java $
+ $LastChangedRevision: 716588 $
+ $Author: uh2s $
+ $LastChangedDate: 2014-05-16 10:11:42 -0400 (Fri, 16 May 2014) $
+*/
+package com.vanguard.service.domain.account.brokerage.impl;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.easymock.EasyMock;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.powermock.core.classloader.annotations.PrepareForTest;
+import org.powermock.modules.junit4.PowerMockRunner;
+
+import com.vanguard.process.investment.Investment;
+import com.vanguard.retail.mock.VgiClassUnderTest;
+import com.vanguard.service.domain.account.brokerage.BrokerageHolding;
+import com.vanguard.service.domain.account.brokerage.BrokerageHoldingDelayed;
+import com.vanguard.service.domain.account.brokerage.BrokerageHoldingRealtime;
+import com.vanguard.service.domain.account.impl.AccountFilter;
+import com.vanguard.service.domain.account.impl.BrokerageAccount;
+
+@RunWith(PowerMockRunner.class)
+public class HoldingInvestmentMapperTest {
+	
+	@VgiClassUnderTest
+	private HoldingInvestmentMapper holdingInvestMapper;
+
+    @Test
+    public void testMapInvestmentsToDelayedHoldings() {
+        HoldingInvestmentMapper mapper = new HoldingInvestmentMapper();
+        mapper.mapInvestmentsToDelayedHoldings(mockBrokerageAccounts());
+    }
+    
+    @Test
+    public void testMapInvestmentsToRealtimeHoldings() {
+        HoldingInvestmentMapper mapper = new HoldingInvestmentMapper();
+        mapper.mapInvestmentsToRealtimeHoldings(mockBrokerageAccounts());
+    }
+          
+    private List<BrokerageAccount> mockBrokerageAccounts() {
+        BrokerageAccount mock = mockBrokerageAccount();
+        List<BrokerageAccount> accounts = new ArrayList<BrokerageAccount>();
+        accounts.add(mock);
+        return accounts;
+    }
+    
+    private BrokerageAccount mockBrokerageAccount() {
+        BrokerageAccount mock = EasyMock.createNiceMock(BrokerageAccount.class);
+        EasyMock.expect(mock.getDelayedHoldings()).andReturn(mockBrokerageHoldingDelayeds()).anyTimes();
+        EasyMock.expect(mock.getRealtimeHoldingsNoRefresh()).andReturn(mockBrokerageHoldingRealtimes()).anyTimes();
+        EasyMock.replay(mock);
+        return mock;
+    }
+    
+    private List<BrokerageHoldingDelayed> mockBrokerageHoldingDelayeds() {
+        List<BrokerageHoldingDelayed> holdings = new ArrayList<BrokerageHoldingDelayed>();
+        holdings.add(mockBrokerageHoldingDelayed());
+        return holdings;
+    }
+    
+    private BrokerageHoldingDelayed mockBrokerageHoldingDelayed() {
+        BrokerageHoldingDelayed mock = EasyMock.createNiceMock(BrokerageHoldingDelayed.class);
+        
+//        EasyMock.expect(mock.getDelayedHoldings()).andReturn(mockBrokerageHoldingDelayeds()).anyTimes();
+//        EasyMock.expect(mock.getRealtimeHoldingsNoRefresh()).andReturn(mockBrokerageHoldingRealtimes()).anyTimes();
+        EasyMock.replay(mock);
+        return mock;
+    }
+    
+    private List<BrokerageHoldingRealtime> mockBrokerageHoldingRealtimes() {
+        List<BrokerageHoldingRealtime> holdings = new ArrayList<BrokerageHoldingRealtime>();
+        holdings.add(mockBrokerageHoldingRealtime());
+        return holdings;
+    }
+    
+    private BrokerageHoldingRealtime mockBrokerageHoldingRealtime() {
+        BrokerageHoldingRealtime mock = EasyMock.createNiceMock(BrokerageHoldingRealtime.class);
+        
+//        EasyMock.expect(mock.getDelayedHoldings()).andReturn(mockBrokerageHoldingDelayeds()).anyTimes();
+//        EasyMock.expect(mock.getRealtimeHoldingsNoRefresh()).andReturn(mockBrokerageHoldingRealtimes()).anyTimes();
+        EasyMock.replay(mock);
+        return mock;
+    }
+    
+    private List<BrokerageHolding> fetcher mockHoldingFetcher(){
+    	List<BrokerageHolding> holdings= new ArrayList<BrokerageHolding>();
+    	
+    }
+
+        
+}
